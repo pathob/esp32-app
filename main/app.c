@@ -85,12 +85,18 @@ void WS2812_task(void *pvParameters) {
 
 void SSD1306_task(void *pvParameters)
 {
+    ESP_LOGI(TAG, "Starting SSD1306 task");
+
     ESP_ERROR_CHECK( SSD1306_init(i2c_port0, SSD1306_ADDR_LOW) );
     ESP_ERROR_CHECK( BME280_init(i2c_port0, BME280_ADDR_LOW) );
 
-    char buffer[50];
+    time_t t;
+    timeinfo_t timeinfo = { 0 };
 
-    while(1) {
+    char buffer[50];
+    char strftime_buf[10];
+
+    while (1) {
         sprintf(buffer, "Temp.:   %.2f *C", BME280_get_temperature_double());
         SSD1306_set_text_6x8(FONT_lcd5x7, buffer, 4, 18);
 
@@ -98,7 +104,11 @@ void SSD1306_task(void *pvParameters)
         sprintf(buffer, "Press.: %.2f hPa",  BME280_get_pressure_double() / 100);
         SSD1306_set_text_6x8(FONT_lcd5x7, buffer, 4, 30);
 
-        SSD1306_set_text_6x8(FONT_lcd5x7, "LOPOLO", 47, 4);
+        time(&t);
+        localtime_r(&t, &timeinfo);
+        strftime(strftime_buf, sizeof(strftime_buf), "%T", &timeinfo);
+        
+        SSD1306_set_text_6x8(FONT_lcd5x7, strftime_buf, 41, 4);
 
         /*
         for (uint16_t i = 0; i < SSD1306_LCDWIDTH * 2; i++) {
@@ -147,11 +157,9 @@ void delay_task(
 void app_main()
 {
     esp_err_t esp_err;
-
-    nvs_flash_init();
     gpio_install_isr_service(0);
 
-    WIFI_init(NULL);
+    WIFI_init(WIFI_MODE_STA, NULL);
 
     // xTaskCreate(&delay_task, "delay_task", 2048, NULL, 10, NULL);
 
@@ -170,8 +178,6 @@ void app_main()
 
     // Init I2C bus and sensors
 
-    return;
-
     i2c_config_t i2c_port0_conf;
     i2c_port0_conf.mode = I2C_MODE_MASTER;
     i2c_port0_conf.sda_io_num = I2C_P0_GPIO_SDA;
@@ -182,13 +188,13 @@ void app_main()
 
     I2C_init(i2c_port0, &i2c_port0_conf);
 
-    ESP_ERROR_CHECK( ROTENC_init(ROTENC_GPIO_CLK, ROTENC_GPIO_DT, ROTENC_GPIO_SW) );
-    ESP_ERROR_CHECK( SSD1306_init(i2c_port0, SSD1306_ADDR_LOW) );
+    // ESP_ERROR_CHECK( ROTENC_init(ROTENC_GPIO_CLK, ROTENC_GPIO_DT, ROTENC_GPIO_SW) );
 
     // xTaskCreate(&KEYBOARD_task, "KEYBOARD_task", 2048, NULL, 10, NULL);
     xTaskCreate(&SSD1306_task, "SSD1306_task", 2048, NULL, 10, NULL);
     // xTaskCreate(&BME280_task, "BME280_task", 2048, NULL, 10, NULL);
 
+    return;
 
     // TODO: How to decide if update should be started?
     // xTaskCreate(&OTA_task, "OTA_task", 2048, NULL, 10, NULL);
