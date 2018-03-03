@@ -141,12 +141,14 @@ void SSD1306_task(void *pvParameters)
 
         SSD1306_set_bitmap(wifi_icon_8x8, 8, 8, 65, 3);
 
+        /*
         sprintf(buffer, "Temp.:   %.2f *C", BME280_get_temperature_double());
         SSD1306_set_text_6x8(FONT_lcd5x7, buffer, 4, 18);
 
         // printf("BME280 Hum:   %.2f %%rH", BME280_get_humidity_double());
         sprintf(buffer, "Press.: %.2f hPa",  BME280_get_pressure_double() / 100);
         SSD1306_set_text_6x8(FONT_lcd5x7, buffer, 4, 30);
+        */
 
         /*
         for (uint16_t i = 0; i < SSD1306_LCDWIDTH * 2; i++) {
@@ -211,8 +213,8 @@ void app_main()
 
     I2C_init(i2c_port0, &i2c_port0_conf);
 
-    ESP_ERROR_CHECK( SSD1306_init(i2c_port0, SSD1306_ADDR_LOW) );
-    ESP_ERROR_CHECK( BME280_init(i2c_port0, BME280_ADDR_LOW) );
+    ESP_ERROR_CHECK( SSD1306_init_with_reset(i2c_port0, SSD1306_ADDR_LOW, OLED_GPIO_RESET) );
+    // ESP_ERROR_CHECK( BME280_init(i2c_port0, BME280_ADDR_LOW) );
 
     xTaskCreate(&SSD1306_task, "SSD1306_task", 2048, NULL, 10, NULL);
 
@@ -221,6 +223,8 @@ void app_main()
     // xTaskCreate(&delay_task, "delay_task", 2048, NULL, 10, NULL);
 
     // Init WS2812 stripe
+
+    return;
 
     stripe.gpio_num = WS2812_GPIO;
     stripe.length = stripe_length;
