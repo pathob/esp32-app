@@ -85,30 +85,68 @@ void WS2812_task(void *pvParameters) {
 
 void SSD1306_task(void *pvParameters)
 {
+    EventBits_t event_bits = 0;
     ESP_LOGI(TAG, "Starting SSD1306 task");
 
-    ESP_ERROR_CHECK( SSD1306_init(i2c_port0, SSD1306_ADDR_LOW) );
-    ESP_ERROR_CHECK( BME280_init(i2c_port0, BME280_ADDR_LOW) );
+    SSD1306_set_bitmap(espressif, 124, 24, 2, 20);
+    SSD1306_display();
+    vTaskDelay(333 / portTICK_PERIOD_MS);
+
+    SSD1306_set_bitmap(wifi, 36, 24, 46, 20);
+    SSD1306_display();
+    vTaskDelay(333 / portTICK_PERIOD_MS);
+
+    SSD1306_set_bitmap(bluetooth, 90, 22, 19, 21);
+    SSD1306_display();
+    vTaskDelay(333 / portTICK_PERIOD_MS);
+
+    event_bits = xEventGroupGetBits(WIFI_event_group);
+
+    // if (!(event_bits & WIFI_STA_CONNECTED_BIT)) {
+        SSD1306_set_text_6x8(FONT_lcd5x7, "Connecting to...", 4, 23);
+        SSD1306_set_text_6x8(FONT_lcd5x7, WIFI_STA_SSID, 4, 33);
+        SSD1306_display();
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+    // }
+
+    xEventGroupWaitBits(WIFI_event_group, WIFI_STA_CONNECTED_BIT, false, true, portMAX_DELAY);
+
+    // if (!(event_bits & SNTP_TIME_SET_BIT)) {
+        SSD1306_set_text_6x8(FONT_lcd5x7, "Fetching time...", 4, 28);
+        SSD1306_display();
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+    // }
+
+    xEventGroupWaitBits(WIFI_event_group, SNTP_TIME_SET_BIT, false, true, portMAX_DELAY);
 
     time_t t;
     timeinfo_t timeinfo = { 0 };
 
     char buffer[50];
-    char strftime_buf[10];
+    char strftime_buf[6];
+
+    uint8_t buffer_bitmap_8x8[64];
 
     while (1) {
+        time(&t);
+        localtime_r(&t, &timeinfo);
+        strftime(strftime_buf, sizeof(strftime_buf), "%R", &timeinfo);
+
+        
+        SSD1306_set_text_6x8(FONT_lcd5x7, strftime_buf, 95, 4);
+        SSD1306_set_bitmap(bluetooth_icon_8x8, 8, 8, 85, 3);
+
+        WIFI_sta_rssi_bitmap_8x8(&buffer_bitmap_8x8);
+        SSD1306_set_bitmap(buffer_bitmap_8x8, 8, 8, 75, 3);
+
+        SSD1306_set_bitmap(wifi_icon_8x8, 8, 8, 65, 3);
+
         sprintf(buffer, "Temp.:   %.2f *C", BME280_get_temperature_double());
         SSD1306_set_text_6x8(FONT_lcd5x7, buffer, 4, 18);
 
         // printf("BME280 Hum:   %.2f %%rH", BME280_get_humidity_double());
         sprintf(buffer, "Press.: %.2f hPa",  BME280_get_pressure_double() / 100);
         SSD1306_set_text_6x8(FONT_lcd5x7, buffer, 4, 30);
-
-        time(&t);
-        localtime_r(&t, &timeinfo);
-        strftime(strftime_buf, sizeof(strftime_buf), "%T", &timeinfo);
-        
-        SSD1306_set_text_6x8(FONT_lcd5x7, strftime_buf, 41, 4);
 
         /*
         for (uint16_t i = 0; i < SSD1306_LCDWIDTH * 2; i++) {
@@ -122,6 +160,7 @@ void SSD1306_task(void *pvParameters)
     }
 }
 
+/*
 void KEYBOARD_task(void *pvParameters)
 {
     KEYBOARD_display();
@@ -130,6 +169,7 @@ void KEYBOARD_task(void *pvParameters)
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
+*/
 
 void delay_task(
         void *pvParameters) {
@@ -159,6 +199,23 @@ void app_main()
     esp_err_t esp_err;
     gpio_install_isr_service(0);
 
+    // Init I2C bus and sensors
+
+    i2c_config_t i2c_port0_conf;
+    i2c_port0_conf.mode = I2C_MODE_MASTER;
+    i2c_port0_conf.sda_io_num = I2C_P0_GPIO_SDA;
+    i2c_port0_conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
+    i2c_port0_conf.scl_io_num = I2C_P0_GPIO_SCL;
+    i2c_port0_conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+    i2c_port0_conf.master.clk_speed = 1600000;
+
+    I2C_init(i2c_port0, &i2c_port0_conf);
+
+    ESP_ERROR_CHECK( SSD1306_init(i2c_port0, SSD1306_ADDR_LOW) );
+    ESP_ERROR_CHECK( BME280_init(i2c_port0, BME280_ADDR_LOW) );
+
+    xTaskCreate(&SSD1306_task, "SSD1306_task", 2048, NULL, 10, NULL);
+
     WIFI_init(WIFI_MODE_STA, NULL);
 
     // xTaskCreate(&delay_task, "delay_task", 2048, NULL, 10, NULL);
@@ -176,22 +233,9 @@ void app_main()
         xTaskCreate(&WS2812_task, "WS2812_task", 8192, NULL, 10, NULL);
     }
 
-    // Init I2C bus and sensors
-
-    i2c_config_t i2c_port0_conf;
-    i2c_port0_conf.mode = I2C_MODE_MASTER;
-    i2c_port0_conf.sda_io_num = I2C_P0_GPIO_SDA;
-    i2c_port0_conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-    i2c_port0_conf.scl_io_num = I2C_P0_GPIO_SCL;
-    i2c_port0_conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-    i2c_port0_conf.master.clk_speed = 1600000;
-
-    I2C_init(i2c_port0, &i2c_port0_conf);
-
     // ESP_ERROR_CHECK( ROTENC_init(ROTENC_GPIO_CLK, ROTENC_GPIO_DT, ROTENC_GPIO_SW) );
 
     // xTaskCreate(&KEYBOARD_task, "KEYBOARD_task", 2048, NULL, 10, NULL);
-    xTaskCreate(&SSD1306_task, "SSD1306_task", 2048, NULL, 10, NULL);
     // xTaskCreate(&BME280_task, "BME280_task", 2048, NULL, 10, NULL);
 
     return;
